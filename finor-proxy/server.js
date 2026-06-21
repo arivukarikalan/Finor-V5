@@ -20,7 +20,7 @@ app.use(cors({
 app.use(express.json());
 
 // 🔴 PASTE YOUR GOOGLE WEB APP URL HERE
-const GOOGLE_API_URL = "https://script.google.com/macros/s/AKfycbyPoa4szJQkOu_O14KMYSgwvKeQZe-JCj_Kdq9mbOyAXJtWfbPpGQ8dr4Tg9Ox7L4U5Aw/exec";
+const GOOGLE_API_URL = process.env.GOOGLE_WEB_APP_URL;
 
 // HELPER: Get active keys
 async function getKeys() {

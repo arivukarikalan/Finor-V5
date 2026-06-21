@@ -8,7 +8,7 @@ export default function Admin() {
 
   useEffect(() => {
     // Check if Proxy is reachable
-    fetch('http://localhost:3001/api/gtt')
+    fetch('https://finor-v5.onrender.com/api/gtt')
       .then(() => setProxyStatus('online'))
       .catch(() => setProxyStatus('offline'));
   }, []);
@@ -32,7 +32,7 @@ export default function Admin() {
           <Server className={proxyStatus === 'online' ? 'text-emerald-500' : 'text-rose-500'} />
           <div>
             <p className="text-sm font-bold text-zinc-200">Execution Proxy</p>
-            <p className="text-xs text-zinc-500">http://localhost:3001</p>
+            <p className="text-xs text-zinc-500">https://finor-v5.onrender.com/</p>
           </div>
         </div>
         {proxyStatus === 'online' ? <CheckCircle className="text-emerald-500" /> : <XCircle className="text-rose-500" />}

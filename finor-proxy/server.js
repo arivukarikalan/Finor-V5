@@ -6,7 +6,17 @@ require('dotenv').config();
 const app = express();
 const PORT = 3001;
 
-app.use(cors({ origin: 'http://localhost:5173' }));
+// finor-proxy/server.js
+
+// Replace the placeholder string with your actual Vercel URL
+app.use(cors({ 
+  origin: [
+    'http://localhost:5173', 
+    'https://project-dv51c.vercel.app/' // <-- PASTE YOUR VERCEL URL HERE
+  ],
+  credentials: true
+}));
+
 app.use(express.json());
 
 // 🔴 PASTE YOUR GOOGLE WEB APP URL HERE

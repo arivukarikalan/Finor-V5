@@ -40,7 +40,7 @@ export default function ExitStrategy({ selectedStock }: { selectedStock?: any })
     setDeployStatus('idle');
 
     try {
-      const response = await fetch('http://localhost:3001/api/gtt/place', {
+      const response = await fetch('https://finor-v5.onrender.com/api/gtt/place', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

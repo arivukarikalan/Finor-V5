@@ -6,7 +6,7 @@ export default function AskFinor() {
   // 🔴 PASTE YOUR KEYS HERE:
   const SHEET_API_URL = localStorage.getItem('google_sheet_url') || "";
   const GEMINI_API_KEY = localStorage.getItem('gemini_api_key') || "";
-  const PROXY_URL = "http://localhost:3001";
+  const PROXY_URL = "https://finor-v5.onrender.com/";
 
   const [messages, setMessages] = useState<{role: 'user' | 'assistant', content: string}[]>([
     { role: 'assistant', content: "Hello! I am Finor, your personal AI trading assistant. I'm loading your portfolio now..." }

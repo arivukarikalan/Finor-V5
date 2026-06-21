@@ -4,8 +4,9 @@ import { GoogleGenAI } from '@google/genai';
 
 export default function AskFinor() {
   // 🔴 PASTE YOUR KEYS HERE:
-  const SHEET_API_URL = localStorage.getItem('google_sheet_url') || "";
-  const GEMINI_API_KEY = localStorage.getItem('gemini_api_key') || "";
+  const SHEET_API_URL = import.meta.env.VITE_GOOGLE_SHEET_URL || localStorage.getItem('google_sheet_url') || "";
+ // Replace your GEMINI_API_KEY line with this:
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('gemini_api_key') || "";
   const PROXY_URL = "https://finor-v5.onrender.com";
 
   const [messages, setMessages] = useState<{role: 'user' | 'assistant', content: string}[]>([

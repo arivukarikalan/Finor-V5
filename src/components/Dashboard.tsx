@@ -3,7 +3,8 @@ import { Wallet, TrendingUp, ArrowUpRight, ArrowDownRight, Activity, ShieldCheck
 
 export default function Dashboard() {
 // Inside Dashboard.tsx
-  const API_URL = localStorage.getItem('google_sheet_url') || "";
+  // Replace your API_URL line with this:
+  const API_URL = import.meta.env.VITE_GOOGLE_SHEET_URL || localStorage.getItem('google_sheet_url') || "";
   const PROXY_URL = localStorage.getItem('proxy_url') || "https://finor-v5.onrender.com"; // <-- PASTE YOUR RENDER URL AS A DEFAULT fallback 
 
   const [holdings, setHoldings] = useState<any[]>([]);

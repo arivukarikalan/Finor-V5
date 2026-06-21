@@ -17,16 +17,14 @@ export default function Admin() {
 
 const handleLogin = () => {
     if (!GOOGLE_AUTH_URL) {
-      alert("System Error: VITE_GOOGLE_SHEET_URL is missing from Vercel Environment Variables.");
+      alert("System Error: VITE_GOOGLE_SHEET_URL is missing.");
       return;
     }
     
-    // Add authuser=0 to bypass the Google multi-account mobile bug
-    const authUrl = GOOGLE_AUTH_URL.includes('?') 
-      ? `${GOOGLE_AUTH_URL}&authuser=0` 
-      : `${GOOGLE_AUTH_URL}?authuser=0`;
+    // Forcefully injects the account profile path that your phone is trying to use
+    const mobileFixedUrl = GOOGLE_AUTH_URL.replace('/macros/s/', '/macros/u/1/s/');
       
-    window.open(authUrl, '_blank');
+    window.open(mobileFixedUrl, '_blank');
   };
 
   return (

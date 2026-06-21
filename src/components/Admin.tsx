@@ -15,13 +15,18 @@ export default function Admin() {
       .catch(() => setProxyStatus('offline'));
   }, [PROXY_URL]);
 
-  const handleLogin = () => {
+const handleLogin = () => {
     if (!GOOGLE_AUTH_URL) {
       alert("System Error: VITE_GOOGLE_SHEET_URL is missing from Vercel Environment Variables.");
       return;
     }
-    // Opens your Google Apps Script auth flow in a new browser tab
-    window.open(GOOGLE_AUTH_URL, '_blank');
+    
+    // Add authuser=0 to bypass the Google multi-account mobile bug
+    const authUrl = GOOGLE_AUTH_URL.includes('?') 
+      ? `${GOOGLE_AUTH_URL}&authuser=0` 
+      : `${GOOGLE_AUTH_URL}?authuser=0`;
+      
+    window.open(authUrl, '_blank');
   };
 
   return (

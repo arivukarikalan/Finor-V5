@@ -16,15 +16,8 @@ export default function Admin() {
   }, [PROXY_URL]);
 
 const handleLogin = () => {
-    if (!GOOGLE_AUTH_URL) {
-      alert("System Error: VITE_GOOGLE_SHEET_URL is missing.");
-      return;
-    }
-    
-    // Forcefully injects the account profile path that your phone is trying to use
-    const mobileFixedUrl = GOOGLE_AUTH_URL.replace('/macros/s/', '/macros/u/1/s/');
-      
-    window.open(mobileFixedUrl, '_blank');
+    // Navigates the current window straight into the proxy's auth flow
+    window.location.href = `${PROXY_URL}/api/auth/login`;
   };
 
   return (

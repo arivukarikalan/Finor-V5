@@ -1,35 +1,75 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const crypto = require('crypto'); // NEW: Required to encrypt the Zerodha token
 require('dotenv').config();
 
 const app = express();
 const PORT = 3001;
 
-// finor-proxy/server.js
-
-// Replace the placeholder string with your actual Vercel URL
 app.use(cors({ 
-  origin: [
-    'http://localhost:5173', 
-    'https://project-dv51c.vercel.app' // <-- PASTE YOUR VERCEL URL HERE
-  ],
-  credentials: true
+  origin: ['http://localhost:5173', 'https://project-dv51c.vercel.app'],
+  credentials: true 
 }));
-
 app.use(express.json());
 
-// 🔴 PASTE YOUR GOOGLE WEB APP URL HERE
-const GOOGLE_API_URL = process.env.GOOGLE_WEB_APP_URL;
+// This memory variable completely replaces Google Apps Script!
+let CURRENT_ACCESS_TOKEN = null;
 
-// HELPER: Get active keys
+// ==========================================
+// NEW: ZERODHA NATIVE AUTHENTICATION FLOW
+// ==========================================
+
+// 1. Frontend clicks login -> We redirect to Kite
+app.get('/api/auth/login', (req, res) => {
+    const apiKey = process.env.ZERODHA_API_KEY;
+    // Navigate to the Kite Connect login page with the api_key
+    res.redirect(`https://kite.zerodha.com/connect/login?v=3&api_key=${apiKey}`);
+});
+
+// 2. Kite redirects back here after successful login
+app.get('/api/callback', async (req, res) => {
+    const requestToken = req.query.request_token;
+    if (!requestToken) return res.status(400).send("No request token provided.");
+
+    try {
+        const apiKey = process.env.ZERODHA_API_KEY;
+        const apiSecret = process.env.ZERODHA_API_SECRET;
+
+        // POST the request_token and checksum (SHA-256 of api_key + request_token + api_secret) to /session/token
+        const checksum = crypto.createHash('sha256').update(apiKey + requestToken + apiSecret).digest('hex');
+
+        // Obtain the access_token and use that with all subsequent requests
+        const response = await axios.post('https://api.kite.trade/session/token', new URLSearchParams({
+            api_key: apiKey,
+            request_token: requestToken,
+            checksum: checksum
+        }).toString(), { headers: { 'X-Kite-Version': '3' } });
+
+        // Save it in the server's memory
+        CURRENT_ACCESS_TOKEN = response.data.data.access_token;
+        
+        // Send user back to the Vercel dashboard seamlessly
+        res.redirect('https://project-dv51c.vercel.app/admin?login=success');
+    } catch (error) {
+        console.error("Token Error:", error.response?.data || error.message);
+        res.status(500).send("Authentication failed. Check Render logs.");
+    }
+});
+
+// ==========================================
+// HELPER: Get active keys for trading
+// ==========================================
 async function getKeys() {
-    const googleResponse = await axios.get(GOOGLE_API_URL + "?action=get_token");
-    const ZERODHA_API_KEY = process.env.ZERODHA_API_KEY || "YOUR_API_KEY";
-    const ZERODHA_ACCESS_TOKEN = googleResponse.data.accessToken || process.env.ZERODHA_ACCESS_TOKEN;
-    if (!ZERODHA_ACCESS_TOKEN) throw new Error("Could not retrieve active token.");
+    const ZERODHA_API_KEY = process.env.ZERODHA_API_KEY;
+    // Look in memory first!
+    const ZERODHA_ACCESS_TOKEN = CURRENT_ACCESS_TOKEN || process.env.ZERODHA_ACCESS_TOKEN;
+    
+    if (!ZERODHA_ACCESS_TOKEN) throw new Error("Backend does not have a token. Please click Generate Token in the app.");
     return { key: ZERODHA_API_KEY, token: ZERODHA_ACCESS_TOKEN };
 }
+
+// ... Keep all your existing /api/gtt routes below here ...
 
 // 1. ROUTE: Fetch Active GTT Orders
 app.get('/api/gtt', async (req, res) => {

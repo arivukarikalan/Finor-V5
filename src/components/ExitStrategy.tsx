@@ -41,7 +41,7 @@ export default function ExitStrategy({
   }
 
   const stock = selectedStock; 
-  const PROXY_URL = import.meta.env.VITE_PROXY_URL || localStorage.getItem('proxy_url') || "https://finor-v5.onrender.com";
+  const PROXY_URL = import.meta.env.VITE_PROXY_URL || localStorage.getItem('proxy_url') || "https://finor-v5-arivu7.onrender.com";
 
   const [targetPrice, setTargetPrice] = useState(Math.floor(stock.ltp * 1.05));
   const [stopLossPrice, setStopLossPrice] = useState(Math.floor(stock.ltp * 0.95));

@@ -21,7 +21,7 @@ app.use(express.json());
 
 // This memory variable completely replaces Google Apps Script!
 let CURRENT_ACCESS_TOKEN = null;
-let REDIRECT_FRONTEND_URL = 'https://project-dv51c.vercel.app';
+let REDIRECT_FRONTEND_URL = 'https://finor-v5-arivu7.vercel.app';
 
 // ==========================================
 // NEW: ZERODHA NATIVE AUTHENTICATION FLOW

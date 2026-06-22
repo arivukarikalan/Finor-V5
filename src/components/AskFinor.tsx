@@ -168,20 +168,26 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
 
   // Custom Markdown components to enforce app styling inside AI responses
   const MarkdownComponents = {
-    table: ({node, ...props}: any) => <div className="overflow-x-auto my-3"><table className="w-full text-left border-collapse" {...props} /></div>,
-    th: ({node, ...props}: any) => <th className="border-b border-slate-200 py-2 px-2 font-black text-[10px] text-slate-400 uppercase tracking-widest" {...props} />,
+    table: ({node, ...props}: any) => (
+      <div className="overflow-x-auto my-4 rounded-2xl border border-slate-100 bg-slate-50/50 shadow-sm">
+        <table className="w-full text-left border-collapse min-w-[280px]" {...props} />
+      </div>
+    ),
+    th: ({node, ...props}: any) => (
+      <th className="bg-slate-100/80 border-b border-slate-200 py-3 px-3.5 font-extrabold text-[10px] text-slate-500 uppercase tracking-wider" {...props} />
+    ),
     td: ({node, ...props}: any) => {
         const textContent = props.children?.toString() || "";
         // Auto-color logic: If it contains a negative number, make it red. Positive percent/numbers, green.
-        let colorClass = "text-slate-800 font-bold";
-        if (textContent.includes('-₹') || textContent.includes('-%')) colorClass = "text-rose-600 font-black";
-        else if ((textContent.includes('+₹') || textContent.includes('+%'))) colorClass = "text-emerald-600 font-black";
+        let colorClass = "text-slate-800 font-semibold";
+        if (textContent.includes('-₹') || textContent.includes('-%') || textContent.includes('Down') || textContent.includes('Loss')) colorClass = "text-rose-600 font-extrabold";
+        else if (textContent.includes('+₹') || textContent.includes('+%') || textContent.includes('Up') || textContent.includes('Gainer')) colorClass = "text-emerald-600 font-extrabold";
         
-        return <td className={`border-b border-slate-100 py-2.5 px-2 text-xs ${colorClass}`} {...props} />
+        return <td className={`border-b border-slate-100/70 py-3 px-3.5 text-[11px] ${colorClass}`} {...props} />
     },
-    p: ({node, ...props}: any) => <p className="mb-2 last:mb-0" {...props} />,
-    strong: ({node, ...props}: any) => <strong className="font-black text-slate-900" {...props} />,
-    ul: ({node, ...props}: any) => <ul className="list-disc pl-4 space-y-1 my-2" {...props} />,
+    p: ({node, ...props}: any) => <p className="mb-2.5 last:mb-0 text-slate-700 leading-relaxed font-medium" {...props} />,
+    strong: ({node, ...props}: any) => <strong className="font-extrabold text-slate-900 bg-slate-50 px-1 py-0.5 rounded border border-slate-100" {...props} />,
+    ul: ({node, ...props}: any) => <ul className="list-disc pl-4 space-y-1.5 my-3 text-slate-700 text-xs font-medium" {...props} />,
   };
 
   return (
@@ -210,20 +216,20 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex gap-3 flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
             <div className={`flex gap-3 max-w-[90%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                {/* Brand-aligned Avatars */}
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${
+                 {/* Brand-aligned Avatars */}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm border ${
                     msg.role === 'assistant' 
-                    ? 'bg-indigo-600 text-white' 
-                    : 'bg-slate-100 text-slate-500 border border-slate-200'
+                    ? 'bg-slate-900 border-slate-800 text-white' 
+                    : 'bg-indigo-50 border-indigo-100 text-indigo-600'
                 }`}>
-                {msg.role === 'assistant' ? <Bot size={16} /> : <User size={16} />}
+                {msg.role === 'assistant' ? <Bot size={14} className="text-indigo-400" /> : <User size={14} />}
                 </div>
                 
                 {/* Chat Bubbles */}
-                <div className={`p-4 rounded-[1.5rem] text-sm leading-relaxed ${
+                <div className={`p-4 rounded-[1.65rem] text-xs leading-relaxed transition-all shadow-sm ${
                     msg.role === 'user' 
-                    ? 'bg-indigo-600 text-white rounded-tr-sm shadow-md' 
-                    : 'bg-white border border-slate-100 text-slate-600 rounded-tl-sm shadow-sm'
+                    ? 'bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white rounded-tr-none shadow-[0_4px_15px_rgba(79,70,229,0.15)] font-semibold' 
+                    : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none border-t-2 border-t-indigo-500/80 shadow-[0_6px_24px_rgba(0,0,0,0.02)]'
                 }`}>
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                         {msg.content}

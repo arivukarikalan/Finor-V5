@@ -208,17 +208,33 @@ app.post('/api/chat', async (req, res) => {
         return res.json({ status: 'error', message: "Gemini API key is not configured on the backend server. Please set the GEMINI_API_KEY environment variable on Render." });
     }
 
+    // Helper to format the body correctly since Gemma does not support systemInstruction parameter
+    const buildRequestBody = (modelName, contentsArr, systemText) => {
+        const isGemma = modelName.toLowerCase().startsWith('gemma');
+        const localContents = JSON.parse(JSON.stringify(contentsArr));
+        const body = {
+            contents: localContents,
+            generationConfig: { temperature: 0.2 }
+        };
+        if (systemText) {
+            if (isGemma) {
+                if (localContents && localContents.length > 0 && localContents[0].parts && localContents[0].parts.length > 0) {
+                    localContents[0].parts[0].text = `System Instruction:\n${systemText}\n\nUser Prompt:\n${localContents[0].parts[0].text}`;
+                }
+            } else {
+                body.systemInstruction = { parts: [{ text: systemText }] };
+            }
+        }
+        return body;
+    };
+
     // If we already verified a working model, use it directly to save API quota!
     if (CACHED_ACTIVE_MODEL) {
         try {
             console.log(`Using cached Gemini model: ${CACHED_ACTIVE_MODEL}`);
             const response = await axios.post(
                 `https://generativelanguage.googleapis.com/v1beta/models/${CACHED_ACTIVE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-                {
-                    contents: contents,
-                    systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
-                    generationConfig: { temperature: 0.2 }
-                },
+                buildRequestBody(CACHED_ACTIVE_MODEL, contents, systemInstruction),
                 { headers: { 'Content-Type': 'application/json' } }
             );
             return res.json({ status: 'success', data: response.data, activeModel: CACHED_ACTIVE_MODEL });
@@ -226,7 +242,6 @@ app.post('/api/chat', async (req, res) => {
             const errorMsg = error.response?.data?.error?.message || error.message;
             console.error(`Cached model ${CACHED_ACTIVE_MODEL} failed:`, errorMsg);
             
-            // If it's a quota error, do not clear the cache, just return the quota error
             if (error.response?.status === 429 || errorMsg.includes("Quota exceeded") || errorMsg.includes("limit")) {
                 return res.json({ 
                     status: 'error', 
@@ -234,12 +249,12 @@ app.post('/api/chat', async (req, res) => {
                 });
             }
             
-            // If it's a 404 or other error, clear the cache and fall back to the loop
             CACHED_ACTIVE_MODEL = null;
         }
     }
 
-    const models = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+    // List of candidate models. We place gemma-2-9b-it at the top so that the user can test it as requested.
+    const models = ['gemma-2-9b-it', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-2.5-flash'];
     let lastError = null;
 
     for (const model of models) {
@@ -247,11 +262,7 @@ app.post('/api/chat', async (req, res) => {
             console.log(`Trying Gemini model: ${model}`);
             const response = await axios.post(
                 `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-                {
-                    contents: contents,
-                    systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
-                    generationConfig: { temperature: 0.2 }
-                },
+                buildRequestBody(model, contents, systemInstruction),
                 { headers: { 'Content-Type': 'application/json' } }
             );
             

@@ -8,13 +8,7 @@ const app = express();
 const PORT = 3001;
 
 app.use(cors({ 
-  origin: function (origin, callback) {
-    if (!origin || origin.startsWith('http://localhost') || origin.endsWith('.vercel.app')) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true,
   credentials: true 
 }));
 app.use(express.json());

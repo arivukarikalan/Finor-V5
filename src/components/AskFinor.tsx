@@ -18,6 +18,7 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [rateLimitTimer, setRateLimitTimer] = useState<number>(0);
+  const [activeModel, setActiveModel] = useState<string>('Gemini 1.5 Flash');
 
   useEffect(() => {
     if (rateLimitTimer <= 0) return;
@@ -75,6 +76,16 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
       const chatJson = await chatRes.json();
       if (chatJson.status !== 'success') {
         throw new Error(chatJson.message || 'Failed to generate response');
+      }
+
+      if (chatJson.activeModel) {
+        let label = chatJson.activeModel;
+        if (chatJson.activeModel === 'gemini-1.5-flash-latest' || chatJson.activeModel === 'gemini-1.5-flash') {
+          label = 'Gemini 1.5 Flash';
+        } else if (chatJson.activeModel === 'gemini-2.5-flash') {
+          label = 'Gemini 2.5 Flash';
+        }
+        setActiveModel(label);
       }
 
       let replyText = chatJson.data.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't process that.";
@@ -185,7 +196,7 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
           </div>
           <div className="flex flex-col">
             <h2 className="text-sm font-extrabold tracking-tight text-slate-900">Ask Finor AI</h2>
-            <p className="text-[9px] font-bold text-slate-400 mt-0.5">Gemini 1.5 Flash</p>
+            <p className="text-[9px] font-bold text-slate-400 mt-0.5">{activeModel}</p>
           </div>
         </div>
         <span className="text-[9px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full flex items-center gap-1.5 shrink-0">

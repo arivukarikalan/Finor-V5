@@ -200,30 +200,49 @@ app.post('/api/gtt/place', async (req, res) => {
 // 5. ROUTE: Proxy Gemini AI request securely
 app.post('/api/chat', async (req, res) => {
     const { contents, systemInstruction } = req.body;
-    try {
-        const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-        if (!GEMINI_API_KEY) {
-            return res.json({ status: 'error', message: "Gemini API key is not configured on the backend server. Please set the GEMINI_API_KEY environment variable on Render." });
-        }
-        
-        const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-            {
-                contents: contents,
-                systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
-                generationConfig: { temperature: 0.2 }
-            },
-            { headers: { 'Content-Type': 'application/json' } }
-        );
-        
-        res.json({ status: 'success', data: response.data });
-    } catch (error) {
-        console.error("Gemini Proxy Error:", error.response?.data || error.message);
-        res.json({ 
-            status: 'error', 
-            message: error.response?.data?.error?.message || error.message 
-        });
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    if (!GEMINI_API_KEY) {
+        return res.json({ status: 'error', message: "Gemini API key is not configured on the backend server. Please set the GEMINI_API_KEY environment variable on Render." });
     }
+
+    const models = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+    let lastError = null;
+
+    for (const model of models) {
+        try {
+            console.log(`Trying Gemini model: ${model}`);
+            const response = await axios.post(
+                `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+                {
+                    contents: contents,
+                    systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
+                    generationConfig: { temperature: 0.2 }
+                },
+                { headers: { 'Content-Type': 'application/json' } }
+            );
+            
+            // Return successfully as soon as one model succeeds
+            return res.json({ status: 'success', data: response.data, activeModel: model });
+        } catch (error) {
+            const errorMsg = error.response?.data?.error?.message || error.message;
+            console.error(`Model ${model} failed:`, errorMsg);
+            
+            // If it's a quota limit error, return immediately instead of wasting quota on other models
+            if (error.response?.status === 429 || errorMsg.includes("Quota exceeded") || errorMsg.includes("limit")) {
+                return res.json({ 
+                    status: 'error', 
+                    message: `Google API Quota Exceeded (429): ${errorMsg}` 
+                });
+            }
+            
+            lastError = errorMsg;
+        }
+    }
+
+    res.json({ 
+        status: 'error', 
+        message: `All Gemini model options failed. Last error: ${lastError}` 
+    });
 });
 
 app.listen(PORT, () => console.log(`🚀 Advanced Trading Node running on http://localhost:${PORT}`));

@@ -4,6 +4,7 @@ import Holdings from './components/Holdings';
 import ExitStrategy from './components/ExitStrategy';
 import AskFinor from './components/AskFinor';
 import Admin from './components/Admin';
+import Login from './components/Login';
 import { PieChart, Briefcase, TrendingDown, Sparkles, Bell, User } from 'lucide-react';
 
 type TabType = 'dashboard' | 'holdings' | 'exit' | 'ask' | 'admin';
@@ -20,6 +21,7 @@ const MOCK_HOLDINGS = [
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [selectedStock, setSelectedStock] = useState<any>(null);
+  const [isUnlocked, setIsUnlocked] = useState<boolean>(() => sessionStorage.getItem('is_unlocked') === 'true');
 
   const SHEET_API_URL = import.meta.env.VITE_GOOGLE_SHEET_URL || localStorage.getItem('google_sheet_url') || "https://script.google.com/macros/s/AKfycbyPoa4szJQkOu_O14KMYSgwvKeQZe-JCj_Kdq9mbOyAXJtWfbPpGQ8dr4Tg9Ox7L4U5Aw/exec";
   const PROXY_URL = import.meta.env.VITE_PROXY_URL || localStorage.getItem('proxy_url') || "https://finor-v5.onrender.com";
@@ -166,11 +168,31 @@ export default function App() {
       case 'ask':
         return <AskFinor holdings={holdings} />;
       case 'admin':
-        return <Admin PROXY_URL={PROXY_URL} />;
+        return (
+          <Admin 
+            PROXY_URL={PROXY_URL} 
+            onLogout={() => {
+              setIsUnlocked(false);
+              sessionStorage.removeItem('is_unlocked');
+              setActiveTab('dashboard');
+            }} 
+          />
+        );
       default:
         return <Dashboard holdings={holdings} loading={loadingHoldings} activeGTTs={activeGTTs} loadingGTTs={loadingGTTs} handleCancelGTT={handleCancelGTT} />;
     }
   };
+
+  if (!isUnlocked) {
+    return (
+      <Login 
+        onUnlock={() => {
+          setIsUnlocked(true);
+          sessionStorage.setItem('is_unlocked', 'true');
+        }} 
+      />
+    );
+  }
 
   return (
     <div className="h-dvh w-full bg-[#F8F9FA] text-slate-900 flex flex-col overflow-hidden antialiased selection:bg-indigo-500/10">

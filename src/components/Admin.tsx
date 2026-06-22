@@ -1,21 +1,22 @@
 import { useState, useEffect } from 'react';
-import { Server, CheckCircle2, XCircle, KeyRound, ExternalLink, ChevronLeft, LogOut, Clock, Database, Settings, Sparkles } from 'lucide-react';
+import { Server, CheckCircle2, XCircle, KeyRound, ExternalLink, ChevronLeft, LogOut, Clock } from 'lucide-react';
 
-export default function Admin({ PROXY_URL }: { PROXY_URL: string }) {
+export default function Admin({ PROXY_URL, onLogout }: { PROXY_URL: string, onLogout?: () => void }) {
   const [proxyStatus, setProxyStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [tokenTime, setTokenTime] = useState<string>('Checking...');
   const [generatedLabel, setGeneratedLabel] = useState<string>('');
 
-  // Local Storage Settings State
-  const [sheetUrl, setSheetUrl] = useState(() => localStorage.getItem('google_sheet_url') || import.meta.env.VITE_GOOGLE_SHEET_URL || '');
-  const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem('gemini_api_key') || import.meta.env.VITE_GEMINI_API_KEY || '');
-  const [proxyUrl, setProxyUrl] = useState(() => localStorage.getItem('proxy_url') || import.meta.env.VITE_PROXY_URL || 'https://finor-v5.onrender.com');
-  const [saveSuccess, setSaveSuccess] = useState(false);
-
   // 1. Check Proxy Server Health
   useEffect(() => {
     fetch(`${PROXY_URL}/api/gtt`)
-      .then(() => setProxyStatus('online'))
+      .then((res) => {
+        // If the server responded (even if it's 500/401/error JSON), the engine is online!
+        if (res.status === 404) {
+          setProxyStatus('offline');
+        } else {
+          setProxyStatus('online');
+        }
+      })
       .catch(() => setProxyStatus('offline'));
   }, [PROXY_URL]);
 
@@ -77,17 +78,6 @@ export default function Admin({ PROXY_URL }: { PROXY_URL: string }) {
     window.location.href = `${PROXY_URL}/api/auth/login`;
   };
 
-  const handleSaveSettings = () => {
-    localStorage.setItem('google_sheet_url', sheetUrl.trim());
-    localStorage.setItem('gemini_api_key', geminiKey.trim());
-    localStorage.setItem('proxy_url', proxyUrl.trim());
-    setSaveSuccess(true);
-    setTimeout(() => {
-      setSaveSuccess(false);
-      window.location.reload();
-    }, 1500);
-  };
-
   return (
     <div className="space-y-6 animate-fade-in px-3 py-2 text-slate-900 pb-[160px]">
       
@@ -113,7 +103,10 @@ export default function Admin({ PROXY_URL }: { PROXY_URL: string }) {
             <p className="text-xs font-bold text-slate-400">Pro Tier • Kite Connected</p>
           </div>
         </div>
-        <button className="p-2.5 text-slate-400 bg-slate-50 rounded-full hover:text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer">
+        <button 
+          onClick={onLogout}
+          className="p-2.5 text-slate-400 bg-slate-50 rounded-full hover:text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
+        >
           <LogOut size={16} />
         </button>
       </div>
@@ -176,74 +169,6 @@ export default function Admin({ PROXY_URL }: { PROXY_URL: string }) {
           className="w-full py-3.5 mt-2 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
         >
           Regenerate Token <ExternalLink size={16} />
-        </button>
-      </div>
-
-      {/* 5. System Configuration Card */}
-      <div className="bg-white border border-slate-100 shadow-sm rounded-[1.5rem] p-5 space-y-4">
-        <div className="flex items-center gap-2 mb-1">
-          <Settings className="text-indigo-600" size={18} />
-          <h3 className="text-sm font-extrabold text-slate-900">API Configuration</h3>
-        </div>
-
-        <div className="space-y-3">
-          {/* Google Sheet URL */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Database size={10} /> Google Sheets Web App URL
-            </label>
-            <input 
-              type="text" 
-              value={sheetUrl}
-              onChange={(e) => setSheetUrl(e.target.value)}
-              placeholder="https://script.google.com/macros/s/.../exec"
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all text-slate-800"
-            />
-          </div>
-
-          {/* Gemini API Key */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Sparkles size={10} /> Gemini API Key
-            </label>
-            <input 
-              type="password" 
-              value={geminiKey}
-              onChange={(e) => setGeminiKey(e.target.value)}
-              placeholder="Enter Gemini API Key"
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all text-slate-800"
-            />
-          </div>
-
-          {/* Execution Proxy URL */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Server size={10} /> Node.js Execution Proxy
-            </label>
-            <input 
-              type="text" 
-              value={proxyUrl}
-              onChange={(e) => setProxyUrl(e.target.value)}
-              placeholder="https://finor-v5.onrender.com"
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all text-slate-800"
-            />
-          </div>
-        </div>
-
-        <button 
-          onClick={handleSaveSettings}
-          disabled={saveSuccess}
-          className={`w-full py-3 mt-2 rounded-xl font-bold text-xs transition-all active:scale-[0.98] shadow-sm flex items-center justify-center gap-2 cursor-pointer ${
-            saveSuccess 
-              ? 'bg-emerald-50 text-emerald-600 border border-emerald-100 font-extrabold' 
-              : 'bg-indigo-600 text-white hover:bg-indigo-700'
-          }`}
-        >
-          {saveSuccess ? (
-            <><CheckCircle2 size={14} /> Settings Saved & Reloading...</>
-          ) : (
-            'Save Configuration'
-          )}
         </button>
       </div>
       

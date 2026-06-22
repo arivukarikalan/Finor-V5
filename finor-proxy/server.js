@@ -5,7 +5,7 @@ const crypto = require('crypto'); // NEW: Required to encrypt the Zerodha token
 require('dotenv').config();
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 app.use(cors({ 
   origin: true,
@@ -33,6 +33,15 @@ app.get('/api/auth/login', (req, res) => {
         }
     }
     const apiKey = process.env.ZERODHA_API_KEY;
+    if (!apiKey) {
+        return res.status(200).send(`
+            <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                <h2>Configuration Error</h2>
+                <p><strong>ZERODHA_API_KEY</strong> is missing from Render's environment variables.</p>
+                <p>Please configure ZERODHA_API_KEY in the Environment section of your Render Web Service dashboard.</p>
+            </div>
+        `);
+    }
     // Navigate to the Kite Connect login page with the api_key
     res.redirect(`https://kite.zerodha.com/connect/login?v=3&api_key=${apiKey}`);
 });
@@ -45,6 +54,16 @@ app.get('/api/callback', async (req, res) => {
     try {
         const apiKey = process.env.ZERODHA_API_KEY;
         const apiSecret = process.env.ZERODHA_API_SECRET;
+
+        if (!apiKey || !apiSecret) {
+            return res.status(200).send(`
+                <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                    <h2>Configuration Error</h2>
+                    <p><strong>ZERODHA_API_KEY</strong> or <strong>ZERODHA_API_SECRET</strong> is missing from Render's environment variables.</p>
+                    <p>Please set them in Render and try again.</p>
+                </div>
+            `);
+        }
 
         // POST the request_token and checksum (SHA-256 of api_key + request_token + api_secret) to /session/token
         const checksum = crypto.createHash('sha256').update(apiKey + requestToken + apiSecret).digest('hex');
@@ -90,7 +109,10 @@ app.get('/api/gtt', async (req, res) => {
         });
         res.json({ status: 'success', data: response.data.data });
     } catch (error) {
-        res.status(500).json({ status: 'error', message: "Failed to fetch orders." });
+        if (error.message && error.message.includes("does not have a token")) {
+            return res.json({ status: 'error', code: 'AUTH_REQUIRED', message: error.message });
+        }
+        res.json({ status: 'error', message: "Failed to fetch orders." });
     }
 });
 
@@ -103,7 +125,10 @@ app.delete('/api/gtt/:id', async (req, res) => {
         });
         res.json({ status: 'success', message: `Order ${req.params.id} cancelled.` });
     } catch (error) {
-        res.status(500).json({ status: 'error', message: "Failed to cancel order." });
+        if (error.message && error.message.includes("does not have a token")) {
+            return res.json({ status: 'error', code: 'AUTH_REQUIRED', message: error.message });
+        }
+        res.json({ status: 'error', message: "Failed to cancel order." });
     }
 });
 
@@ -133,7 +158,10 @@ app.post('/api/gtt/buy', async (req, res) => {
         });
         res.json({ status: 'success', trigger_id: response.data.data.trigger_id });
     } catch (error) {
-        res.status(500).json({ status: 'error', message: error.response?.data?.message || error.message });
+        if (error.message && error.message.includes("does not have a token")) {
+            return res.json({ status: 'error', code: 'AUTH_REQUIRED', message: error.message });
+        }
+        res.json({ status: 'error', message: error.response?.data?.message || error.message });
     }
 });
 
@@ -162,7 +190,39 @@ app.post('/api/gtt/place', async (req, res) => {
         });
         res.json({ status: 'success', trigger_id: response.data.data.trigger_id });
     } catch (error) {
-        res.status(500).json({ status: 'error', message: error.response?.data?.message || error.message });
+        if (error.message && error.message.includes("does not have a token")) {
+            return res.json({ status: 'error', code: 'AUTH_REQUIRED', message: error.message });
+        }
+        res.json({ status: 'error', message: error.response?.data?.message || error.message });
+    }
+});
+
+// 5. ROUTE: Proxy Gemini AI request securely
+app.post('/api/chat', async (req, res) => {
+    const { contents, systemInstruction } = req.body;
+    try {
+        const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+        if (!GEMINI_API_KEY) {
+            return res.json({ status: 'error', message: "Gemini API key is not configured on the backend server. Please set the GEMINI_API_KEY environment variable on Render." });
+        }
+        
+        const response = await axios.post(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+            {
+                contents: contents,
+                systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
+                generationConfig: { temperature: 0.2 }
+            },
+            { headers: { 'Content-Type': 'application/json' } }
+        );
+        
+        res.json({ status: 'success', data: response.data });
+    } catch (error) {
+        console.error("Gemini Proxy Error:", error.response?.data || error.message);
+        res.json({ 
+            status: 'error', 
+            message: error.response?.data?.error?.message || error.message 
+        });
     }
 });
 

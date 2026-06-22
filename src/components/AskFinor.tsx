@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Send, Bot, User, Sparkles, Loader2, CheckCircle2, ShieldAlert, X } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 export default function AskFinor({ holdings }: { holdings: any[] }) {
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('gemini_api_key') || "";
   const PROXY_URL = import.meta.env.VITE_PROXY_URL || localStorage.getItem('proxy_url') || "https://finor-v5.onrender.com";
 
   const [messages, setMessages] = useState<{role: 'user' | 'assistant', content: string}[]>([
@@ -19,7 +17,6 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
   const [actionStatus, setActionStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -37,7 +34,7 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
 
   const handleSend = async (textOverride?: string) => {
     const userMessage = textOverride || input.trim();
-    if (!userMessage || !GEMINI_API_KEY || GEMINI_API_KEY.includes("PASTE_YOUR")) return;
+    if (!userMessage) return;
 
     setInput('');
     setPendingAction(null); // Clear any unconfirmed actions
@@ -57,13 +54,21 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
 
       ${portfolioContext}`;
 
-      const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: [{ role: 'user', parts: [{ text: systemInstruction + "\n\nUser Prompt: " + userMessage }] }],
-          config: { temperature: 0.2 } // Lowered temperature for more analytical/rigid formatting
+      const chatRes = await fetch(`${PROXY_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+          systemInstruction: systemInstruction
+        })
       });
 
-      let replyText = response.text || "I'm sorry, I couldn't process that.";
+      const chatJson = await chatRes.json();
+      if (chatJson.status !== 'success') {
+        throw new Error(chatJson.message || 'Failed to generate response');
+      }
+
+      let replyText = chatJson.data.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't process that.";
 
       // Extract execution intents
       const orderMatch = replyText.match(/<<<ORDER>>>(.*?)<<<ORDER>>>/s);

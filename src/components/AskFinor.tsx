@@ -110,8 +110,9 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
       
       setMessages(prev => [...prev, { role: 'assistant', content: replyText }]);
 
-    } catch (error) {
-      setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I am having trouble connecting to my neural network." }]);
+    } catch (error: any) {
+      const errorMsg = error?.message || "Sorry, I am having trouble connecting to my neural network.";
+      setMessages(prev => [...prev, { role: 'assistant', content: `❌ **AI Connection Failure:** ${errorMsg}` }]);
     } finally {
       setIsTyping(false);
     }

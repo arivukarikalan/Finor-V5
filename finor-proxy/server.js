@@ -197,12 +197,46 @@ app.post('/api/gtt/place', async (req, res) => {
     }
 });
 
+// This memory variable stores the verified working model name to avoid repetitive fallback API calls
+let CACHED_ACTIVE_MODEL = null;
+
 // 5. ROUTE: Proxy Gemini AI request securely
 app.post('/api/chat', async (req, res) => {
     const { contents, systemInstruction } = req.body;
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
     if (!GEMINI_API_KEY) {
         return res.json({ status: 'error', message: "Gemini API key is not configured on the backend server. Please set the GEMINI_API_KEY environment variable on Render." });
+    }
+
+    // If we already verified a working model, use it directly to save API quota!
+    if (CACHED_ACTIVE_MODEL) {
+        try {
+            console.log(`Using cached Gemini model: ${CACHED_ACTIVE_MODEL}`);
+            const response = await axios.post(
+                `https://generativelanguage.googleapis.com/v1beta/models/${CACHED_ACTIVE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+                {
+                    contents: contents,
+                    systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
+                    generationConfig: { temperature: 0.2 }
+                },
+                { headers: { 'Content-Type': 'application/json' } }
+            );
+            return res.json({ status: 'success', data: response.data, activeModel: CACHED_ACTIVE_MODEL });
+        } catch (error) {
+            const errorMsg = error.response?.data?.error?.message || error.message;
+            console.error(`Cached model ${CACHED_ACTIVE_MODEL} failed:`, errorMsg);
+            
+            // If it's a quota error, do not clear the cache, just return the quota error
+            if (error.response?.status === 429 || errorMsg.includes("Quota exceeded") || errorMsg.includes("limit")) {
+                return res.json({ 
+                    status: 'error', 
+                    message: `Google API Quota Exceeded (429): ${errorMsg}` 
+                });
+            }
+            
+            // If it's a 404 or other error, clear the cache and fall back to the loop
+            CACHED_ACTIVE_MODEL = null;
+        }
     }
 
     const models = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-2.5-flash'];
@@ -221,13 +255,13 @@ app.post('/api/chat', async (req, res) => {
                 { headers: { 'Content-Type': 'application/json' } }
             );
             
-            // Return successfully as soon as one model succeeds
+            // Success! Cache this model to save future API requests
+            CACHED_ACTIVE_MODEL = model;
             return res.json({ status: 'success', data: response.data, activeModel: model });
         } catch (error) {
             const errorMsg = error.response?.data?.error?.message || error.message;
             console.error(`Model ${model} failed:`, errorMsg);
             
-            // If it's a quota limit error, return immediately instead of wasting quota on other models
             if (error.response?.status === 429 || errorMsg.includes("Quota exceeded") || errorMsg.includes("limit")) {
                 return res.json({ 
                     status: 'error', 

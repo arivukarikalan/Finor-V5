@@ -1,64 +1,55 @@
-import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Sparkles, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { Send, Bot, User, Sparkles, Loader2, CheckCircle2, ShieldAlert, X } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
-export default function AskFinor() {
-  // 🔴 PASTE YOUR KEYS HERE:
-  const SHEET_API_URL = import.meta.env.VITE_GOOGLE_SHEET_URL || localStorage.getItem('google_sheet_url') || "";
- // Replace your GEMINI_API_KEY line with this:
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('gemini_api_key') || "";
-  const PROXY_URL = "https://finor-v5.onrender.com";
+export default function AskFinor({ holdings }: { holdings: any[] }) {
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('gemini_api_key') || "";
+  const PROXY_URL = import.meta.env.VITE_PROXY_URL || localStorage.getItem('proxy_url') || "https://finor-v5.onrender.com";
 
   const [messages, setMessages] = useState<{role: 'user' | 'assistant', content: string}[]>([
-    { role: 'assistant', content: "Hello! I am Finor, your personal AI trading assistant. I'm loading your portfolio now..." }
+    { role: 'assistant', content: "Hello! I am Finor, your personal AI trading assistant. Portfolio synced! How can I help you analyze your holdings today?" }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [portfolioContext, setPortfolioContext] = useState('');
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  
+  // New State: Pending Trade Confirmation Gate
+  const [pendingAction, setPendingAction] = useState<{ type: string, endpoint: string, body: any, uiText: string } | null>(null);
+  const [actionStatus, setActionStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
+  const chatEndRef = useRef<HTMLDivElement>(null);
   const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, pendingAction]);
 
-  useEffect(() => {
-    const fetchContext = async () => {
-      if (!SHEET_API_URL || SHEET_API_URL.includes("PASTE_YOUR")) return;
-      try {
-        const response = await fetch(SHEET_API_URL);
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-          let contextString = "Here is the user's current live stock portfolio:\n";
-          result.data.forEach((stock: any) => {
-            contextString += `- ${stock.qty} shares of ${stock.ticker} at Avg Price ₹${stock.avgPrice}. Current LTP is ₹${stock.ltp}.\n`;
-          });
-          setPortfolioContext(contextString);
-          
-          setMessages([
-             { role: 'assistant', content: "Portfolio synced! You can ask me things like 'What is my most profitable stock?' or tell me to 'Buy 10 shares of ZOMATO at 145'." }
-          ]);
-        }
-      } catch (error) {
-        console.error("Failed to fetch context:", error);
-      }
-    };
-    fetchContext();
-  }, []);
+  // Compute portfolio context dynamically
+  const portfolioContext = useMemo(() => {
+    let contextString = "Here is the user's current live stock portfolio:\n";
+    holdings.forEach((stock: any) => {
+      const avg = stock.avgPrice || stock.buyPrice || 0;
+      contextString += `- ${stock.qty} shares of ${stock.ticker} at Avg Price ₹${avg}. Current LTP is ₹${stock.ltp}.\n`;
+    });
+    return contextString;
+  }, [holdings]);
 
-  const handleSend = async () => {
-    if (!input.trim() || !GEMINI_API_KEY || GEMINI_API_KEY.includes("PASTE_YOUR")) return;
+  const handleSend = async (textOverride?: string) => {
+    const userMessage = textOverride || input.trim();
+    if (!userMessage || !GEMINI_API_KEY || GEMINI_API_KEY.includes("PASTE_YOUR")) return;
 
-    const userMessage = input.trim();
     setInput('');
+    setPendingAction(null); // Clear any unconfirmed actions
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setIsTyping(true);
 
     try {
-      const systemInstruction = `You are Finor, a sharp, professional, and concise algorithmic trading assistant. 
-      IMPORTANT MATH RULE: Perform all calculations step-by-step internally before giving the final answer.
+      const systemInstruction = `You are Finor, a highly intelligent, institutional-grade algorithmic trading assistant. 
+      IMPORTANT RULES:
+      1. Use Markdown tables aggressively for lists of stocks or numeric comparisons.
+      2. Keep responses highly concise and formatted for a mobile app screen.
+      3. Perform all math internally before providing final answers.
       
       AGENT TOOL - SELL OCO GTT: <<<ORDER>>> {"ticker": "STOCK_NAME", "qty": NUMBER, "targetPrice": NUMBER, "stopLossPrice": NUMBER, "ltp": NUMBER} <<<ORDER>>>
       AGENT TOOL - BUY GTT: <<<BUY_ORDER>>> {"ticker": "STOCK_NAME", "qty": NUMBER, "triggerPrice": NUMBER, "limitPrice": NUMBER, "ltp": NUMBER} <<<BUY_ORDER>>>
@@ -69,60 +60,45 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getIt
       const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash',
           contents: [{ role: 'user', parts: [{ text: systemInstruction + "\n\nUser Prompt: " + userMessage }] }],
-          config: { temperature: 0.7 }
+          config: { temperature: 0.2 } // Lowered temperature for more analytical/rigid formatting
       });
 
       let replyText = response.text || "I'm sorry, I couldn't process that.";
-      let orderStatusMsg: string | null = null; // Explicitly typed as string or null
 
+      // Extract execution intents
       const orderMatch = replyText.match(/<<<ORDER>>>(.*?)<<<ORDER>>>/s);
       const buyMatch = replyText.match(/<<<BUY_ORDER>>>(.*?)<<<BUY_ORDER>>>/s);
       const cancelMatch = replyText.match(/<<<CANCEL>>>(.*?)<<<CANCEL>>>/s);
       
       if (orderMatch || buyMatch || cancelMatch) {
+          let pendingType = '';
           let endpoint = '';
           let fetchBody: any = {};
-          let uiActionMsg = '';
-          let isCancel = false;
+          let uiText = '';
 
           if (orderMatch) {
-              const orderData = JSON.parse(orderMatch[1].trim());
+              fetchBody = JSON.parse(orderMatch[1].trim());
               endpoint = `${PROXY_URL}/api/gtt/place`;
-              fetchBody = orderData;
-              uiActionMsg = `*Deploying SELL OCO order for ${orderData.ticker}...*`;
+              uiText = `Sell ${fetchBody.qty}x ${fetchBody.ticker} (Target: ₹${fetchBody.targetPrice}, Stop: ₹${fetchBody.stopLossPrice})`;
+              pendingType = 'SELL OCO';
               replyText = replyText.replace(/<<<ORDER>>>.*?<<<ORDER>>>/s, '').trim();
           } else if (buyMatch) {
-              const buyData = JSON.parse(buyMatch[1].trim());
+              fetchBody = JSON.parse(buyMatch[1].trim());
               endpoint = `${PROXY_URL}/api/gtt/buy`;
-              fetchBody = buyData;
-              uiActionMsg = `*Deploying BUY GTT order for ${buyData.ticker}...*`;
+              uiText = `Buy ${fetchBody.qty}x ${fetchBody.ticker} at ₹${fetchBody.limitPrice}`;
+              pendingType = 'BUY LIMIT';
               replyText = replyText.replace(/<<<BUY_ORDER>>>.*?<<<BUY_ORDER>>>/s, '').trim();
           } else if (cancelMatch) {
-              const cancelData = JSON.parse(cancelMatch[1].trim());
-              endpoint = `${PROXY_URL}/api/gtt/${cancelData.trigger_id}`;
-              isCancel = true;
-              uiActionMsg = `*Requesting cancellation of GTT ${cancelData.trigger_id}...*`;
+              fetchBody = JSON.parse(cancelMatch[1].trim());
+              endpoint = `${PROXY_URL}/api/gtt/${fetchBody.trigger_id}`;
+              uiText = `Cancel GTT Order #${fetchBody.trigger_id}`;
+              pendingType = 'CANCEL';
               replyText = replyText.replace(/<<<CANCEL>>>.*?<<<CANCEL>>>/s, '').trim();
           }
           
-          replyText += `\n\n${uiActionMsg}`;
           setMessages(prev => [...prev, { role: 'assistant', content: replyText }]);
-          
-          try {
-            const proxyRes = await fetch(endpoint, {
-                method: isCancel ? 'DELETE' : 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: isCancel ? null : JSON.stringify(fetchBody)
-            });
-            const proxyResult = await proxyRes.json();
-            orderStatusMsg = proxyResult.status === 'success' ? `✅ **Action Complete:** ${proxyResult.message || 'GTT Executed.'}` : `❌ **Action Failed:** ${proxyResult.message}`;
-          } catch (e) {
-            orderStatusMsg = `❌ **Action Failed:** Could not reach the local proxy server at ${PROXY_URL}.`;
-          }
-          
-          setTimeout(() => {
-             if(orderStatusMsg) setMessages(prev => [...prev, { role: 'assistant', content: orderStatusMsg as string }]);
-          }, 800);
+          // Trigger the confirmation gate instead of firing blindly
+          setPendingAction({ type: pendingType, endpoint, body: fetchBody, uiText });
           setIsTyping(false);
           return; 
       }
@@ -136,46 +112,162 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getIt
     }
   };
 
+  const confirmPendingAction = async () => {
+    if (!pendingAction) return;
+    setActionStatus('loading');
+    
+    try {
+        const proxyRes = await fetch(pendingAction.endpoint, {
+            method: pendingAction.type === 'CANCEL' ? 'DELETE' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: pendingAction.type === 'CANCEL' ? null : JSON.stringify(pendingAction.body)
+        });
+        const proxyResult = await proxyRes.json();
+        
+        if (proxyResult.status === 'success') {
+            setMessages(prev => [...prev, { role: 'assistant', content: `✅ **Confirmed:** ${pendingAction.uiText} has been routed to Kite.` }]);
+        } else {
+            setMessages(prev => [...prev, { role: 'assistant', content: `❌ **Failed:** ${proxyResult.message}` }]);
+        }
+    } catch (e) {
+        setMessages(prev => [...prev, { role: 'assistant', content: `❌ **Failed:** Could not reach execution proxy.` }]);
+    } finally {
+        setPendingAction(null);
+        setActionStatus('idle');
+    }
+  };
+
+  // Custom Markdown components to enforce app styling inside AI responses
+  const MarkdownComponents = {
+    table: ({node, ...props}: any) => <div className="overflow-x-auto my-3"><table className="w-full text-left border-collapse" {...props} /></div>,
+    th: ({node, ...props}: any) => <th className="border-b border-slate-200 py-2 px-2 font-black text-[10px] text-slate-400 uppercase tracking-widest" {...props} />,
+    td: ({node, ...props}: any) => {
+        const textContent = props.children?.toString() || "";
+        // Auto-color logic: If it contains a negative number, make it red. Positive percent/numbers, green.
+        let colorClass = "text-slate-800 font-bold";
+        if (textContent.includes('-₹') || textContent.includes('-%')) colorClass = "text-rose-600 font-black";
+        else if ((textContent.includes('+₹') || textContent.includes('+%'))) colorClass = "text-emerald-600 font-black";
+        
+        return <td className={`border-b border-slate-100 py-2.5 px-2 text-xs ${colorClass}`} {...props} />
+    },
+    p: ({node, ...props}: any) => <p className="mb-2 last:mb-0" {...props} />,
+    strong: ({node, ...props}: any) => <strong className="font-black text-slate-900" {...props} />,
+    ul: ({node, ...props}: any) => <ul className="list-disc pl-4 space-y-1 my-2" {...props} />,
+  };
+
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] animate-fade-in relative">
-      <div className="flex items-center gap-2 mb-4 shrink-0">
-        <div className="w-8 h-8 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-          <Sparkles size={14} className="text-zinc-400" />
+    // Replaced h-[calc] with pure flex layout and global padding protection
+    <div className="flex flex-col h-full min-h-[75vh] animate-fade-in relative pb-8">
+      
+      {/* 1. Header (High Contrast Light Theme) */}
+      <div className="flex items-center gap-3 mb-4 shrink-0 px-2 pt-2">
+        <div className="w-8 h-8 rounded-full bg-white shadow-sm border border-slate-200 flex items-center justify-center">
+          <Sparkles size={14} className="text-indigo-600" />
         </div>
-        <h2 className="text-sm font-semibold tracking-wide text-zinc-200">Ask Finor AI</h2>
+        <h2 className="text-sm font-extrabold tracking-tight text-slate-900">Ask Finor AI</h2>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 [&::-webkit-scrollbar]:hidden">
+      {/* 2. Chat Area */}
+      <div className="flex-1 overflow-y-auto space-y-4 mb-4 px-2 [&::-webkit-scrollbar]:hidden">
         {messages.map((msg, idx) => (
-          <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'assistant' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-400'}`}>
-              {msg.role === 'assistant' ? <Bot size={16} /> : <User size={16} />}
+          <div key={idx} className={`flex gap-3 flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+            <div className={`flex gap-3 max-w-[90%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                {/* Brand-aligned Avatars */}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${
+                    msg.role === 'assistant' 
+                    ? 'bg-indigo-600 text-white' 
+                    : 'bg-slate-100 text-slate-500 border border-slate-200'
+                }`}>
+                {msg.role === 'assistant' ? <Bot size={16} /> : <User size={16} />}
+                </div>
+                
+                {/* Chat Bubbles */}
+                <div className={`p-4 rounded-[1.5rem] text-sm leading-relaxed ${
+                    msg.role === 'user' 
+                    ? 'bg-indigo-600 text-white rounded-tr-sm shadow-md' 
+                    : 'bg-white border border-slate-100 text-slate-600 rounded-tl-sm shadow-sm'
+                }`}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
+                        {msg.content}
+                    </ReactMarkdown>
+                </div>
             </div>
-            <div className={`p-3 rounded-2xl max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap ${msg.role === 'user' ? 'bg-zinc-800 text-zinc-100' : 'bg-[#121212] border border-zinc-800/50 text-zinc-300'}`}>
-              {msg.content}
-            </div>
+
+            {/* Interactive Suggestion Chips (Only show after the first welcome message) */}
+            {idx === 0 && msg.role === 'assistant' && messages.length === 1 && (
+                <div className="flex flex-wrap gap-2 pl-11">
+                    {["Summarize my portfolio", "What is my top gainer?", "Buy 10 shares of ZOMATO at 145"].map(prompt => (
+                        <button 
+                            key={prompt}
+                            onClick={() => handleSend(prompt)}
+                            className="bg-white border border-slate-200 text-indigo-600 text-[10px] font-bold px-3 py-1.5 rounded-full shadow-sm hover:bg-slate-50 transition-colors"
+                        >
+                            {prompt}
+                        </button>
+                    ))}
+                </div>
+            )}
           </div>
         ))}
+
         {isTyping && (
           <div className="flex gap-3">
-             <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0"><Bot size={16} /></div>
-             <div className="p-3 rounded-2xl bg-[#121212] border border-zinc-800/50 text-zinc-400 text-xs flex items-center gap-1"><Loader2 size={14} className="animate-spin" /> Finor is thinking...</div>
+             <div className="w-8 h-8 rounded-full bg-indigo-600 text-white shadow-sm flex items-center justify-center shrink-0"><Bot size={16} /></div>
+             <div className="p-4 rounded-[1.5rem] rounded-tl-sm bg-white border border-slate-100 text-slate-400 text-xs font-bold flex items-center gap-2 shadow-sm">
+                 <Loader2 size={14} className="animate-spin text-indigo-600" /> Finor is computing...
+             </div>
           </div>
         )}
+
+        {/* 3. The Execution Gate (Confirmation UI) */}
+        {pendingAction && (
+          <div className="flex gap-3 pl-11 mt-2">
+             <div className="bg-white border border-indigo-100 shadow-md rounded-[1.5rem] p-4 w-full max-w-[85%] border-l-4 border-l-indigo-600 animate-in slide-in-from-bottom-2">
+                 <div className="flex items-center gap-2 mb-2">
+                     <ShieldAlert size={14} className="text-indigo-600" />
+                     <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Execution Required</h4>
+                 </div>
+                 <p className="text-sm font-black text-slate-900 mb-4">{pendingAction.uiText}</p>
+                 
+                 <div className="flex gap-2">
+                     <button 
+                         onClick={confirmPendingAction}
+                         disabled={actionStatus === 'loading'}
+                         className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 rounded-xl shadow-sm transition-colors flex justify-center items-center gap-1"
+                     >
+                         {actionStatus === 'loading' ? <Loader2 size={14} className="animate-spin" /> : <><CheckCircle2 size={14} /> Confirm</>}
+                     </button>
+                     <button 
+                         onClick={() => setPendingAction(null)}
+                         disabled={actionStatus === 'loading'}
+                         className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold py-2.5 rounded-xl transition-colors flex justify-center items-center gap-1"
+                     >
+                         <X size={14} /> Cancel
+                     </button>
+                 </div>
+             </div>
+          </div>
+        )}
+
         <div ref={chatEndRef} />
       </div>
 
-      <div className="relative shrink-0">
+      {/* 4. Input Area */}
+      <div className="relative shrink-0 mx-2">
         <input 
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
           placeholder="Ask about your portfolio..."
-          className="w-full bg-[#121212] border border-zinc-800 rounded-full py-3.5 pl-5 pr-12 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50"
+          className="w-full bg-white shadow-sm border border-slate-200 rounded-full py-4 pl-5 pr-14 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
         />
-        <button onClick={handleSend} className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 flex items-center justify-center">
-          <Send size={16} className="ml-0.5" />
+        <button 
+          onClick={() => handleSend()} 
+          disabled={!input.trim() || isTyping}
+          className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-indigo-600 text-white shadow-md hover:bg-indigo-700 disabled:opacity-50 disabled:hover:bg-indigo-600 flex items-center justify-center transition-all"
+        >
+          <Send size={16} className="ml-0.5" strokeWidth={2.5} />
         </button>
       </div>
     </div>

@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 
 export default function AskFinor({ holdings }: { holdings: any[] }) {
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('gemini_api_key') || "";
-  const PROXY_URL = import.meta.env.VITE_PROXY_URL || localStorage.getItem('proxy_url') || "https://finor-v5-arivu7.onrender.com";
+  const PROXY_URL = import.meta.env.VITE_PROXY_URL || localStorage.getItem('proxy_url') || "https://finor-v5.onrender.com";
 
   const [messages, setMessages] = useState<{role: 'user' | 'assistant', content: string}[]>([
     { role: 'assistant', content: "Hello! I am Finor, your personal AI trading assistant. Portfolio synced! How can I help you analyze your holdings today?" }

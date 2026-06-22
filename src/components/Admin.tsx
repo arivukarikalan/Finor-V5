@@ -9,7 +9,7 @@ export default function Admin({ PROXY_URL }: { PROXY_URL: string }) {
   // Local Storage Settings State
   const [sheetUrl, setSheetUrl] = useState(() => localStorage.getItem('google_sheet_url') || import.meta.env.VITE_GOOGLE_SHEET_URL || '');
   const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem('gemini_api_key') || import.meta.env.VITE_GEMINI_API_KEY || '');
-  const [proxyUrl, setProxyUrl] = useState(() => localStorage.getItem('proxy_url') || import.meta.env.VITE_PROXY_URL || 'https://finor-v5-arivu7.onrender.com');
+  const [proxyUrl, setProxyUrl] = useState(() => localStorage.getItem('proxy_url') || import.meta.env.VITE_PROXY_URL || 'https://finor-v5.onrender.com');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // 1. Check Proxy Server Health
@@ -224,7 +224,7 @@ export default function Admin({ PROXY_URL }: { PROXY_URL: string }) {
               type="text" 
               value={proxyUrl}
               onChange={(e) => setProxyUrl(e.target.value)}
-              placeholder="https://finor-v5-arivu7.onrender.com"
+              placeholder="https://finor-v5.onrender.com"
               className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all text-slate-800"
             />
           </div>

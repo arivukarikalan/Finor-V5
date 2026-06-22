@@ -17,6 +17,15 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
   const [actionStatus, setActionStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const [rateLimitTimer, setRateLimitTimer] = useState<number>(0);
+
+  useEffect(() => {
+    if (rateLimitTimer <= 0) return;
+    const interval = setInterval(() => {
+      setRateLimitTimer(prev => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [rateLimitTimer]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -112,6 +121,9 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
 
     } catch (error: any) {
       const errorMsg = error?.message || "Sorry, I am having trouble connecting to my neural network.";
+      if (errorMsg.toLowerCase().includes("quota") || errorMsg.toLowerCase().includes("limit") || errorMsg.toLowerCase().includes("exceeded") || errorMsg.toLowerCase().includes("429")) {
+        setRateLimitTimer(20); // 20s cooldown for rate limits
+      }
       setMessages(prev => [...prev, { role: 'assistant', content: `❌ **AI Connection Failure:** ${errorMsg}` }]);
     } finally {
       setIsTyping(false);
@@ -166,11 +178,20 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
     <div className="flex flex-col h-full min-h-[75vh] animate-fade-in relative pb-8">
       
       {/* 1. Header (High Contrast Light Theme) */}
-      <div className="flex items-center gap-3 mb-4 shrink-0 px-2 pt-2">
-        <div className="w-8 h-8 rounded-full bg-white shadow-sm border border-slate-200 flex items-center justify-center">
-          <Sparkles size={14} className="text-indigo-600" />
+      <div className="flex items-center justify-between mb-4 shrink-0 px-2 pt-2 gap-2">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-white shadow-sm border border-slate-200 flex items-center justify-center">
+            <Sparkles size={14} className="text-indigo-600" />
+          </div>
+          <div className="flex flex-col">
+            <h2 className="text-sm font-extrabold tracking-tight text-slate-900">Ask Finor AI</h2>
+            <p className="text-[9px] font-bold text-slate-400 mt-0.5">Gemini 1.5 Flash</p>
+          </div>
         </div>
-        <h2 className="text-sm font-extrabold tracking-tight text-slate-900">Ask Finor AI</h2>
+        <span className="text-[9px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full flex items-center gap-1.5 shrink-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+          Free Tier (15 RPM)
+        </span>
       </div>
 
       {/* 2. Chat Area */}
@@ -257,6 +278,24 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
 
         <div ref={chatEndRef} />
       </div>
+
+      {rateLimitTimer > 0 && (
+        <div className="mx-2 mb-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl p-3 flex items-center justify-between shadow-sm animate-in slide-in-from-bottom-2">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+            </span>
+            <div className="flex flex-col">
+              <p className="text-[10px] font-black uppercase tracking-wider text-amber-700">API Quota Exceeded</p>
+              <p className="text-[9px] font-bold text-amber-600 mt-0.5">Gemini rate limit is completed</p>
+            </div>
+          </div>
+          <span className="text-[10px] font-black bg-amber-200/60 text-amber-800 px-2.5 py-1 rounded-md">
+            Retry in {rateLimitTimer}s
+          </span>
+        </div>
+      )}
 
       {/* 4. Input Area */}
       <div className="relative shrink-0 mx-2">

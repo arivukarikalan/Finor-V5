@@ -18,7 +18,7 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [rateLimitTimer, setRateLimitTimer] = useState<number>(0);
-  const [activeModel, setActiveModel] = useState<string>('Gemini 1.5 Flash');
+  const [activeModel, setActiveModel] = useState<string>('Gemini 2.5 Flash');
 
   useEffect(() => {
     if (rateLimitTimer <= 0) return;
@@ -64,11 +64,21 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
 
       ${portfolioContext}`;
 
+      // Build full conversation history for multi-turn memory
+      const conversationHistory = messages
+        .filter(m => !(m.role === 'assistant' && m.content.includes('AI Connection Failure')))
+        .map(m => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }]
+        }));
+      // Add current user message
+      conversationHistory.push({ role: 'user', parts: [{ text: userMessage }] });
+
       const chatRes = await fetch(`${PROXY_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+          contents: conversationHistory,
           systemInstruction: systemInstruction
         })
       });
@@ -79,13 +89,14 @@ export default function AskFinor({ holdings }: { holdings: any[] }) {
       }
 
       if (chatJson.activeModel) {
-        let label = chatJson.activeModel;
-        if (chatJson.activeModel === 'gemini-1.5-flash-latest' || chatJson.activeModel === 'gemini-1.5-flash') {
-          label = 'Gemini 1.5 Flash';
-        } else if (chatJson.activeModel === 'gemini-2.5-flash') {
-          label = 'Gemini 2.5 Flash';
-        }
-        setActiveModel(label);
+        const modelMap: Record<string, string> = {
+          'gemini-2.5-flash': 'Gemini 2.5 Flash',
+          'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
+          'gemini-2.5-flash-001': 'Gemini 2.5 Flash (Stable)',
+          'gemini-1.5-flash': 'Gemini 1.5 Flash',
+          'gemini-1.5-flash-latest': 'Gemini 1.5 Flash',
+        };
+        setActiveModel(modelMap[chatJson.activeModel] || chatJson.activeModel);
       }
 
       let replyText = chatJson.data.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't process that.";

@@ -123,6 +123,34 @@ export default function App() {
     fetchData();
   }, [SHEET_API_URL, PROXY_URL]);
 
+  // 4. Live LTP polling every 60s via Zerodha /quote proxy
+  useEffect(() => {
+    const pollLTP = async () => {
+      if (holdings.length === 0) return;
+      try {
+        const tickers = holdings.map(h => `NSE:${h.ticker}`).join(',');
+        const res = await fetch(`${PROXY_URL}/api/quote?instruments=${encodeURIComponent(tickers)}`);
+        const json = await res.json();
+        if (json.status === 'success' && json.data) {
+          setHoldings(prev => prev.map(stock => {
+            const quote = json.data[`NSE:${stock.ticker}`];
+            if (!quote) return stock;
+            return {
+              ...stock,
+              prevLtp: stock.ltp,
+              ltp: quote.last_price
+            };
+          }));
+        }
+      } catch (e) {
+        console.warn('LTP poll failed (no token or offline):', e);
+      }
+    };
+
+    const interval = setInterval(pollLTP, 60000); // every 60s
+    return () => clearInterval(interval);
+  }, [holdings, PROXY_URL]);
+
   const navItems = [
     { id: 'dashboard', icon: PieChart, label: 'Dashboard' },
     { id: 'holdings', icon: Briefcase, label: 'Holdings' },

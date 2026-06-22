@@ -197,18 +197,27 @@ app.post('/api/gtt/place', async (req, res) => {
     }
 });
 
-// Stores the last verified working model to avoid retrying known-good models from scratch
-let CACHED_ACTIVE_MODEL = null;
+// 5. ROUTE: Fetch live LTP quotes for holdings (used by 60s poller)
+app.get('/api/quote', async (req, res) => {
+    const instruments = req.query.instruments; // e.g. "NSE:RELIANCE,NSE:INFY"
+    if (!instruments) return res.json({ status: 'error', message: 'No instruments provided' });
+    try {
+        const { key, token } = await getKeys();
+        const response = await axios.get(`https://api.kite.trade/quote?${instruments.split(',').map(i => `i=${i}`).join('&')}`, {
+            headers: { 'X-Kite-Version': '3', 'Authorization': `token ${key}:${token}` }
+        });
+        res.json({ status: 'success', data: response.data.data });
+    } catch (error) {
+        if (error.message && error.message.includes("does not have a token")) {
+            return res.json({ status: 'error', code: 'AUTH_REQUIRED', message: error.message });
+        }
+        // Graceful fail — frontend will just keep showing last known LTP
+        res.json({ status: 'error', message: 'Quote fetch failed. Token may be expired.' });
+    }
+});
 
-// Free-tier Gemini models in priority order (all valid on v1beta as of June 2026)
-// gemini-2.5-flash      → 10 RPM, best quality for finance Q&A
-// gemini-2.5-flash-lite → 15 RPM, faster fallback for simple queries
-// gemini-2.5-flash-001  → stable versioned fallback
-const GEMINI_MODELS = [
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-flash-001'
-];
+
+let CACHED_ACTIVE_MODEL = null;
 
 // 5. ROUTE: Proxy Gemini AI request securely
 app.post('/api/chat', async (req, res) => {
@@ -218,65 +227,85 @@ app.post('/api/chat', async (req, res) => {
         return res.json({ status: 'error', message: "Gemini API key is not configured on the backend server. Please set the GEMINI_API_KEY environment variable on Render." });
     }
 
-    const buildRequestBody = (contentsArr, systemText) => {
+    // Helper to format the body correctly since Gemma does not support systemInstruction parameter
+    const buildRequestBody = (modelName, contentsArr, systemText) => {
+        const isGemma = modelName.toLowerCase().startsWith('gemma');
         const localContents = JSON.parse(JSON.stringify(contentsArr));
         const body = {
             contents: localContents,
             generationConfig: { temperature: 0.2 }
         };
         if (systemText) {
-            body.systemInstruction = { parts: [{ text: systemText }] };
+            if (isGemma) {
+                if (localContents && localContents.length > 0 && localContents[0].parts && localContents[0].parts.length > 0) {
+                    localContents[0].parts[0].text = `System Instruction:\n${systemText}\n\nUser Prompt:\n${localContents[0].parts[0].text}`;
+                }
+            } else {
+                body.systemInstruction = { parts: [{ text: systemText }] };
+            }
         }
         return body;
     };
 
-    // Build model list: try cached model first, then the rest
-    const modelsToTry = CACHED_ACTIVE_MODEL
-        ? [CACHED_ACTIVE_MODEL, ...GEMINI_MODELS.filter(m => m !== CACHED_ACTIVE_MODEL)]
-        : GEMINI_MODELS;
+    // If we already verified a working model, use it directly to save API quota!
+    if (CACHED_ACTIVE_MODEL) {
+        try {
+            console.log(`Using cached Gemini model: ${CACHED_ACTIVE_MODEL}`);
+            const response = await axios.post(
+                `https://generativelanguage.googleapis.com/v1beta/models/${CACHED_ACTIVE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+                buildRequestBody(CACHED_ACTIVE_MODEL, contents, systemInstruction),
+                { headers: { 'Content-Type': 'application/json' } }
+            );
+            return res.json({ status: 'success', data: response.data, activeModel: CACHED_ACTIVE_MODEL });
+        } catch (error) {
+            const errorMsg = error.response?.data?.error?.message || error.message;
+            console.error(`Cached model ${CACHED_ACTIVE_MODEL} failed:`, errorMsg);
+            
+            if (error.response?.status === 429 || errorMsg.includes("Quota exceeded") || errorMsg.includes("limit")) {
+                return res.json({ 
+                    status: 'error', 
+                    message: `Google API Quota Exceeded (429): ${errorMsg}` 
+                });
+            }
+            
+            CACHED_ACTIVE_MODEL = null;
+        }
+    }
 
+    // List of candidate models. We use only gemma-2-9b-it as requested.
+    const models = ['gemma-2-9b-it'];
     let lastError = null;
 
-    for (const model of modelsToTry) {
+    for (const model of models) {
         try {
             console.log(`Trying Gemini model: ${model}`);
             const response = await axios.post(
                 `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-                buildRequestBody(contents, systemInstruction),
+                buildRequestBody(model, contents, systemInstruction),
                 { headers: { 'Content-Type': 'application/json' } }
             );
-            // Success — cache this model for next request
+            
+            // Success! Cache this model to save future API requests
             CACHED_ACTIVE_MODEL = model;
-            console.log(`✅ Active model: ${model}`);
             return res.json({ status: 'success', data: response.data, activeModel: model });
         } catch (error) {
-            const status = error.response?.status;
             const errorMsg = error.response?.data?.error?.message || error.message;
-            console.error(`Model ${model} failed (${status}): ${errorMsg}`);
-
-            // 429 = rate limit on this model → try next model instead of giving up
-            if (status === 429) {
-                console.warn(`⚠️ Rate limit hit on ${model}, trying next model...`);
-                if (CACHED_ACTIVE_MODEL === model) CACHED_ACTIVE_MODEL = null;
-                lastError = `Rate limit on ${model}`;
-                continue; // try next model
+            console.error(`Model ${model} failed:`, errorMsg);
+            
+            if (error.response?.status === 429 || errorMsg.includes("Quota exceeded") || errorMsg.includes("limit")) {
+                return res.json({ 
+                    status: 'error', 
+                    message: `Google API Quota Exceeded (429): ${errorMsg}` 
+                });
             }
-
-            // 404 = invalid model name → try next
-            if (status === 404 || errorMsg.includes('not found')) {
-                lastError = `Model not found: ${model}`;
-                continue;
-            }
-
-            // Any other error (500, auth, etc.) — fail fast
-            return res.json({ status: 'error', message: errorMsg });
+            
+            lastError = errorMsg;
         }
     }
 
-    // All models exhausted
-    res.json({
-        status: 'error',
-        message: `All Gemini models are rate-limited. Please wait a minute and try again. (${lastError})`
+    res.json({ 
+        status: 'error', 
+        message: `All Gemini model options failed. Last error: ${lastError}` 
     });
 });
 

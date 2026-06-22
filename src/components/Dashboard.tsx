@@ -162,6 +162,9 @@ export default function Dashboard({
                     </span>
                   </div>
                </div>
+               <p className="text-[9px] text-slate-300 font-semibold mt-1">
+                 ⚠ Chart shows simulated trend · Connect Zerodha for historical data
+               </p>
              </div>
 
              {/* Chart Area with Interactive Pointer */}
@@ -306,6 +309,84 @@ export default function Dashboard({
             </div>
           </div>
 
+          {/* ── INSIGHTS SECTION ── derived from real holdings data */}
+          {(() => {
+            if (holdings.length === 0) return null;
+
+            // Top gainer & loser by % return
+            const withPnl = holdings.map(s => {
+              const avg = s.avgPrice || s.buyPrice || 0;
+              const pct = avg > 0 ? ((s.ltp - avg) / avg) * 100 : 0;
+              return { ...s, pct };
+            });
+            const topGainer = [...withPnl].sort((a, b) => b.pct - a.pct)[0];
+            const topLoser  = [...withPnl].sort((a, b) => a.pct - b.pct)[0];
+
+            // Concentration risk — top holding by value weight
+            const topByValue = [...holdings].sort((a, b) => (b.qty * b.ltp) - (a.qty * a.ltp))[0];
+            const topWeight = totalCurrent > 0 ? ((topByValue.qty * topByValue.ltp) / totalCurrent) * 100 : 0;
+
+            // Gain/loss counts
+            const gainCount = withPnl.filter(s => s.pct >= 0).length;
+            const lossCount = withPnl.filter(s => s.pct < 0).length;
+
+            // Portfolio health score (simple 0–100)
+            const healthScore = Math.round(Math.min(100, Math.max(0,
+              50 + (pnlPercent * 2) - (topWeight > 40 ? 15 : 0) - (lossCount > gainCount ? 10 : 0)
+            )));
+            const healthColor = healthScore >= 70 ? 'text-emerald-600 bg-emerald-50' : healthScore >= 45 ? 'text-amber-600 bg-amber-50' : 'text-rose-600 bg-rose-50';
+            const healthLabel = healthScore >= 70 ? 'Healthy' : healthScore >= 45 ? 'Moderate' : 'At Risk';
+
+            return (
+              <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex flex-col space-y-4">
+                <div className="flex items-center justify-between h-6">
+                  <h3 className="text-sm font-extrabold text-slate-800 tracking-tight">Portfolio Insights</h3>
+                  <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${healthColor}`}>
+                    {healthLabel} · {healthScore}/100
+                  </span>
+                </div>
+
+                {/* 2x2 Insight Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Top Gainer */}
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-500">Top Gainer</p>
+                    <p className="text-sm font-black text-slate-900">{topGainer.ticker}</p>
+                    <p className="text-[11px] font-bold text-emerald-600">+{topGainer.pct.toFixed(2)}%</p>
+                  </div>
+
+                  {/* Top Loser */}
+                  <div className="bg-rose-50 border border-rose-100 rounded-2xl p-3 space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-rose-500">Top Loser</p>
+                    <p className="text-sm font-black text-slate-900">{topLoser.ticker}</p>
+                    <p className="text-[11px] font-bold text-rose-600">{topLoser.pct.toFixed(2)}%</p>
+                  </div>
+
+                  {/* Win/Loss ratio */}
+                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Win Ratio</p>
+                    <p className="text-sm font-black text-slate-900">{gainCount}/{holdings.length}</p>
+                    <p className="text-[11px] font-semibold text-slate-500">{gainCount} up · {lossCount} down</p>
+                  </div>
+
+                  {/* Concentration risk */}
+                  <div className={`border rounded-2xl p-3 space-y-1 ${topWeight > 40 ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-100'}`}>
+                    <p className={`text-[9px] font-black uppercase tracking-widest ${topWeight > 40 ? 'text-amber-500' : 'text-slate-400'}`}>
+                      {topWeight > 40 ? '⚠ Concentration' : 'Top Holding'}
+                    </p>
+                    <p className="text-sm font-black text-slate-900">{topByValue.ticker}</p>
+                    <p className={`text-[11px] font-bold ${topWeight > 40 ? 'text-amber-600' : 'text-slate-500'}`}>{topWeight.toFixed(1)}% of portfolio</p>
+                  </div>
+                </div>
+
+                {/* Live data note */}
+                <p className="text-[9px] text-slate-300 font-semibold text-center">
+                  Updates every 60s when Zerodha token is active
+                </p>
+              </div>
+            );
+          })()}
+
           {/* Active Automations Section */}
           <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex flex-col space-y-4">
             <div className="flex items-center justify-between h-6">
@@ -378,11 +459,12 @@ export default function Dashboard({
 
             <div className="space-y-3">
               {holdings.map((stock: any) => {
-                const stockTotal = stock.qty * stock.ltp;
-                const stockPnl = stock.pnl || (stock.avgPrice ? ((stock.ltp - stock.avgPrice) / stock.avgPrice * 100) : 0);
+                const avg = stock.avgPrice || stock.buyPrice || 0;
+                const stockPnlAmt = avg > 0 ? (stock.ltp - avg) * stock.qty : 0;
+                const stockPnl = avg > 0 ? ((stock.ltp - avg) / avg) * 100 : 0;
                 const stockIsProfit = stockPnl >= 0;
                 
-                // Real-time ticking animations logic:
+                const stockTotal = stock.qty * stock.ltp;
                 // Check if price ticked relative to prevLtp
                 const tickedUp = stock.ltp > stock.prevLtp;
                 const tickedDown = stock.ltp < stock.prevLtp;

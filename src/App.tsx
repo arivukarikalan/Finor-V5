@@ -60,12 +60,16 @@ export default function App() {
         const result = await response.json();
         
         if (result.status === 'success') {
-          const freshHoldings = result.data.map((stock: any) => ({
-            ...stock,
-            prevLtp: stock.ltp || stock.avgPrice,
-            ltp: stock.ltp || stock.avgPrice
-          }));
-          setHoldings(freshHoldings);
+          setHoldings(prev => {
+            return result.data.map((stock: any) => {
+              const existing = prev.find((h: any) => h.ticker === stock.ticker);
+              return {
+                ...stock,
+                prevLtp: existing ? existing.ltp : (stock.ltp || stock.avgPrice),
+                ltp: stock.ltp || stock.avgPrice
+              };
+            });
+          });
         } else {
           loadMockData();
         }
@@ -116,38 +120,6 @@ export default function App() {
   useEffect(() => {
     fetchData();
   }, [SHEET_API_URL, PROXY_URL]);
-
-  // 4. Simulated Real-Time Price Ticker
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setHoldings(prevHoldings => {
-        if (!prevHoldings || prevHoldings.length === 0) return prevHoldings;
-        
-        // Randomly select 1 or 2 stocks to tick
-        const tickCount = Math.floor(Math.random() * 2) + 1; // 1 or 2
-        const indicesToTick = new Set<number>();
-        while (indicesToTick.size < Math.min(tickCount, prevHoldings.length)) {
-          indicesToTick.add(Math.floor(Math.random() * prevHoldings.length));
-        }
-
-        return prevHoldings.map((stock, idx) => {
-          if (indicesToTick.has(idx)) {
-            // Tick price up or down by a micro-amount (e.g. -0.15% to +0.15%)
-            const percentChange = (Math.random() * 0.3 - 0.15) / 100;
-            const newLtp = parseFloat((stock.ltp * (1 + percentChange)).toFixed(2));
-            return {
-              ...stock,
-              prevLtp: stock.ltp,
-              ltp: newLtp
-            };
-          }
-          return stock;
-        });
-      });
-    }, 4000); // ticks every 4 seconds
-
-    return () => clearInterval(timer);
-  }, []);
 
   const navItems = [
     { id: 'dashboard', icon: PieChart, label: 'Dashboard' },

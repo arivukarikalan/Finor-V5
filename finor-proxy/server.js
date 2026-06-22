@@ -8,13 +8,20 @@ const app = express();
 const PORT = 3001;
 
 app.use(cors({ 
-  origin: ['http://localhost:5173', 'https://project-dv51c.vercel.app'],
+  origin: function (origin, callback) {
+    if (!origin || origin.startsWith('http://localhost') || origin.endsWith('.vercel.app')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true 
 }));
 app.use(express.json());
 
 // This memory variable completely replaces Google Apps Script!
 let CURRENT_ACCESS_TOKEN = null;
+let REDIRECT_FRONTEND_URL = 'https://project-dv51c.vercel.app';
 
 // ==========================================
 // NEW: ZERODHA NATIVE AUTHENTICATION FLOW
@@ -22,6 +29,15 @@ let CURRENT_ACCESS_TOKEN = null;
 
 // 1. Frontend clicks login -> We redirect to Kite
 app.get('/api/auth/login', (req, res) => {
+    const referer = req.headers.referer;
+    if (referer) {
+        try {
+            const parsed = new URL(referer);
+            REDIRECT_FRONTEND_URL = parsed.origin;
+        } catch (e) {
+            console.error("Failed to parse referer:", e);
+        }
+    }
     const apiKey = process.env.ZERODHA_API_KEY;
     // Navigate to the Kite Connect login page with the api_key
     res.redirect(`https://kite.zerodha.com/connect/login?v=3&api_key=${apiKey}`);
@@ -50,7 +66,7 @@ app.get('/api/callback', async (req, res) => {
         CURRENT_ACCESS_TOKEN = response.data.data.access_token;
         
         // Send user back to the Vercel dashboard seamlessly
-        res.redirect('https://project-dv51c.vercel.app/admin?login=success');
+        res.redirect(`${REDIRECT_FRONTEND_URL}/admin?login=success`);
     } catch (error) {
         console.error("Token Error:", error.response?.data || error.message);
         res.status(500).send("Authentication failed. Check Render logs.");

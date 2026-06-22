@@ -21,7 +21,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [selectedStock, setSelectedStock] = useState<any>(null);
 
-  const SHEET_API_URL = import.meta.env.VITE_GOOGLE_SHEET_URL || localStorage.getItem('google_sheet_url') || "";
+  const SHEET_API_URL = import.meta.env.VITE_GOOGLE_SHEET_URL || localStorage.getItem('google_sheet_url') || "https://script.google.com/macros/s/AKfycbyPoa4szJQkOu_O14KMYSgwvKeQZe-JCj_Kdq9mbOyAXJtWfbPpGQ8dr4Tg9Ox7L4U5Aw/exec";
   const PROXY_URL = import.meta.env.VITE_PROXY_URL || localStorage.getItem('proxy_url') || "https://finor-v5.onrender.com";
 
   const [holdings, setHoldings] = useState<any[]>(MOCK_HOLDINGS);

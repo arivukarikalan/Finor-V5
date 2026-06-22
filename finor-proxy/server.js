@@ -253,8 +253,8 @@ app.post('/api/chat', async (req, res) => {
         }
     }
 
-    // List of candidate models. We place gemma-2-9b-it at the top so that the user can test it as requested.
-    const models = ['gemma-2-9b-it', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+    // List of candidate models. We use only gemma-2-9b-it as requested.
+    const models = ['gemma-2-9b-it'];
     let lastError = null;
 
     for (const model of models) {
